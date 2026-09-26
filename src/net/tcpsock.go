@@ -294,7 +294,7 @@ func newTCPConn(fd *netFD, keepAliveIdle time.Duration, keepAliveCfg KeepAliveCo
 			Idle:   keepAliveIdle,
 		}
 	}
-	c := &TCPConn{conn{fd}}
+	c := &TCPConn{conn{fd: fd}}
 	if keepAliveCfg.Enable {
 		if preKeepAliveHook != nil {
 			preKeepAliveHook(fd)

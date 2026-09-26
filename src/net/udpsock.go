@@ -275,7 +275,7 @@ func (c *UDPConn) WriteMsgUDPAddrPort(b, oob []byte, addr netip.AddrPort) (n, oo
 	return
 }
 
-func newUDPConn(fd *netFD) *UDPConn { return &UDPConn{conn{fd}} }
+func newUDPConn(fd *netFD) *UDPConn { return &UDPConn{conn{fd: fd}} }
 
 // DialUDP acts like [Dial] for UDP networks.
 //
