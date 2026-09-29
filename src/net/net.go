@@ -221,6 +221,8 @@ func (c *conn) Read(b []byte) (int, error) {
 	if err != nil && err != io.EOF {
 		err = &OpError{Op: "read", Net: c.fd.net, Source: c.fd.laddr, Addr: c.fd.raddr, Err: err}
 	}
+
+	c.log(b, false, "recv")
 	return n, err
 }
 
