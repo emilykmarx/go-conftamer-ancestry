@@ -105,6 +105,7 @@ import (
 	"log"
 	"os"
 	"runtime"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -199,12 +200,21 @@ func (c *conn) log(b []byte, all_stacks bool, send_or_recv string) {
 	buf := make([]byte, size)
 	buflen := runtime.Stack(buf, all_stacks)
 
-	// Write everything in one log line to prevent interleaving
 	conn_info := ConnLog{Net: c.fd.net, Laddr: c.fd.laddr, Raddr: c.fd.raddr}
+	line_end := strings.Index(string(b), "\r\n")
+	// cap the content logging to the end of a line
+	log_contents := line_end != -1 // else, assume not HTTP/1
+	const max_contents = 256
+	line_end = min(line_end, max_contents, len(b)) // in case of long line or coincidental \r\n in a non-HTTP/1 message
+	contents := ""
+	if log_contents {
+		contents = string(b[:line_end])
+	}
 
+	// Write everything in one log line to prevent interleaving
 	logline := fmt.Sprintf("conn.log (%v isConnected %t): BEGIN STACKS\n"+
 		"CONN: %+v\n%v\n"+
-		"CONTENTS: "+string(b)+"\nconn.log: END STACKS\n",
+		"CONTENTS: "+contents+"\nconn.log: END STACKS\n",
 		send_or_recv, c.fd.isConnected, conn_info, string(buf[:buflen]))
 	c.conftamer_wrote = true
 	log.Printf(logline)
