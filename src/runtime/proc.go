@@ -194,6 +194,7 @@ func main() {
 	if runtimeInitTime == 0 {
 		throw("nanotime returning zero")
 	}
+	println("Process start at", runtimeInitTime)
 
 	if debug.inittrace != 0 {
 		inittrace.id = getg().goid
