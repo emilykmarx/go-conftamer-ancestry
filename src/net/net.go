@@ -202,7 +202,9 @@ func (c *conn) log(b []byte, all_stacks bool, send_or_recv string) {
 	// Write everything in one log line to prevent interleaving
 	conn_info := ConnLog{Net: c.fd.net, Laddr: c.fd.laddr, Raddr: c.fd.raddr}
 
-	logline := fmt.Sprintf("conn.log (%v isConnected %t): BEGIN STACKS\nCONN: %+v\n%v\nconn.log: END STACKS\n",
+	logline := fmt.Sprintf("conn.log (%v isConnected %t): BEGIN STACKS\n"+
+		"CONN: %+v\n%v\n"+
+		"CONTENTS: "+string(b)+"\nconn.log: END STACKS\n",
 		send_or_recv, c.fd.isConnected, conn_info, string(buf[:buflen]))
 	c.conftamer_wrote = true
 	log.Printf(logline)
@@ -222,7 +224,7 @@ func (c *conn) Read(b []byte) (int, error) {
 		err = &OpError{Op: "read", Net: c.fd.net, Source: c.fd.laddr, Addr: c.fd.raddr, Err: err}
 	}
 
-	c.log(b, false, "recv")
+	c.log(b[:n], false, "recv")
 	return n, err
 }
 
@@ -236,7 +238,7 @@ func (c *conn) Write(b []byte) (int, error) {
 		err = &OpError{Op: "write", Net: c.fd.net, Source: c.fd.laddr, Addr: c.fd.raddr, Err: err}
 	}
 
-	c.log(b, false, "send")
+	c.log(b[:n], false, "send")
 	return n, err
 }
 
