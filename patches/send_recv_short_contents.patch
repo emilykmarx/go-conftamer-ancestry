@@ -1,0 +1,141 @@
+diff --git a/src/net/iprawsock.go b/src/net/iprawsock.go
+index 26134d7..23a60ab 100644
+--- a/src/net/iprawsock.go
++++ b/src/net/iprawsock.go
+@@ -210,7 +210,7 @@ func (c *IPConn) WriteMsgIP(b, oob []byte, addr *IPAddr) (n, oobn int, err error
+ 	return
+ }
+ 
+-func newIPConn(fd *netFD) *IPConn { return &IPConn{conn{fd}} }
++func newIPConn(fd *netFD) *IPConn { return &IPConn{conn{fd: fd}} }
+ 
+ // DialIP acts like [Dial] for IP networks.
+ //
+diff --git a/src/net/net.go b/src/net/net.go
+index 72f5772..f06e334 100644
+--- a/src/net/net.go
++++ b/src/net/net.go
+@@ -99,9 +99,13 @@ package net
+ import (
+ 	"context"
+ 	"errors"
++	"fmt"
+ 	"internal/poll"
+ 	"io"
++	"log"
+ 	"os"
++	"runtime"
++	"strings"
+ 	"sync"
+ 	"syscall"
+ 	"time"
+@@ -181,7 +185,39 @@ type Conn interface {
+ }
+ 
+ type conn struct {
+-	fd *netFD
++	fd              *netFD
++	conftamer_wrote bool
++}
++
++type ConnLog struct {
++	Net   string
++	Laddr Addr
++	Raddr Addr
++}
++
++func (c *conn) log(b []byte, all_stacks bool, send_or_recv string) {
++	const size = 64 << 10
++	buf := make([]byte, size)
++	buflen := runtime.Stack(buf, all_stacks)
++
++	conn_info := ConnLog{Net: c.fd.net, Laddr: c.fd.laddr, Raddr: c.fd.raddr}
++	line_end := strings.Index(string(b), "\r\n")
++	// cap the content logging to the end of a line
++	log_contents := line_end != -1 // else, assume not HTTP/1
++	const max_contents = 256
++	line_end = min(line_end, max_contents, len(b)) // in case of long line or coincidental \r\n in a non-HTTP/1 message
++	contents := ""
++	if log_contents {
++		contents = string(b[:line_end])
++	}
++
++	// Write everything in one log line to prevent interleaving
++	logline := fmt.Sprintf("conn.log (%v isConnected %t): BEGIN STACKS\n"+
++		"CONN: %+v\n%v\n"+
++		"CONTENTS: "+contents+"\nconn.log: END STACKS\n",
++		send_or_recv, c.fd.isConnected, conn_info, string(buf[:buflen]))
++	c.conftamer_wrote = true
++	log.Printf(logline)
+ }
+ 
+ func (c *conn) ok() bool { return c != nil && c.fd != nil }
+@@ -197,6 +233,8 @@ func (c *conn) Read(b []byte) (int, error) {
+ 	if err != nil && err != io.EOF {
+ 		err = &OpError{Op: "read", Net: c.fd.net, Source: c.fd.laddr, Addr: c.fd.raddr, Err: err}
+ 	}
++
++	c.log(b[:n], false, "recv")
+ 	return n, err
+ }
+ 
+@@ -209,6 +247,8 @@ func (c *conn) Write(b []byte) (int, error) {
+ 	if err != nil {
+ 		err = &OpError{Op: "write", Net: c.fd.net, Source: c.fd.laddr, Addr: c.fd.raddr, Err: err}
+ 	}
++
++	c.log(b[:n], false, "send")
+ 	return n, err
+ }
+ 
+diff --git a/src/net/tcpsock.go b/src/net/tcpsock.go
+index 35eda25..51aac9d 100644
+--- a/src/net/tcpsock.go
++++ b/src/net/tcpsock.go
+@@ -294,7 +294,7 @@ func newTCPConn(fd *netFD, keepAliveIdle time.Duration, keepAliveCfg KeepAliveCo
+ 			Idle:   keepAliveIdle,
+ 		}
+ 	}
+-	c := &TCPConn{conn{fd}}
++	c := &TCPConn{conn{fd: fd}}
+ 	if keepAliveCfg.Enable {
+ 		if preKeepAliveHook != nil {
+ 			preKeepAliveHook(fd)
+diff --git a/src/net/udpsock.go b/src/net/udpsock.go
+index fcd6a06..a2c09df 100644
+--- a/src/net/udpsock.go
++++ b/src/net/udpsock.go
+@@ -275,7 +275,7 @@ func (c *UDPConn) WriteMsgUDPAddrPort(b, oob []byte, addr netip.AddrPort) (n, oo
+ 	return
+ }
+ 
+-func newUDPConn(fd *netFD) *UDPConn { return &UDPConn{conn{fd}} }
++func newUDPConn(fd *netFD) *UDPConn { return &UDPConn{conn{fd: fd}} }
+ 
+ // DialUDP acts like [Dial] for UDP networks.
+ //
+diff --git a/src/net/unixsock.go b/src/net/unixsock.go
+index 0ee79f3..a1161c2 100644
+--- a/src/net/unixsock.go
++++ b/src/net/unixsock.go
+@@ -192,7 +192,7 @@ func (c *UnixConn) WriteMsgUnix(b, oob []byte, addr *UnixAddr) (n, oobn int, err
+ 	return
+ }
+ 
+-func newUnixConn(fd *netFD) *UnixConn { return &UnixConn{conn{fd}} }
++func newUnixConn(fd *netFD) *UnixConn { return &UnixConn{conn{fd: fd}} }
+ 
+ // DialUnix acts like [Dial] for Unix networks.
+ //
+diff --git a/src/runtime/proc.go b/src/runtime/proc.go
+index 005c875..fb20c8f 100644
+--- a/src/runtime/proc.go
++++ b/src/runtime/proc.go
+@@ -194,6 +194,7 @@ func main() {
+ 	if runtimeInitTime == 0 {
+ 		throw("nanotime returning zero")
+ 	}
++	println("Process start at", runtimeInitTime)
+ 
+ 	if debug.inittrace != 0 {
+ 		inittrace.id = getg().goid
